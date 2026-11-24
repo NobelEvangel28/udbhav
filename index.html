@@ -159,7 +159,14 @@
     padding:80px 6vw 90px;display:flex;gap:50px;align-items:center;justify-content:space-between;
     flex-wrap:wrap;
   }
-   .cc-title-video{display:block;width:100%;height:auto;background:#000;}
+  .cc-left{flex:1;min-width:280px}
+  .cc-label{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.34em;
+    text-transform:uppercase;color:var(--purple);margin-bottom:14px}
+  .cc-title{
+    font-family:'Archivo Black',sans-serif;font-stretch:75%;
+    font-size:clamp(48px,7vw,108px);line-height:.9;letter-spacing:-.03em;color:#fff;
+  }
+  .cc-title-video{display:block;width:100%;height:auto;background:#000;}
   /* video wrapper + custom controls (play/pause, audio, forward, download, seek) */
   .video-wrap{
     position:relative;display:block;width:100%;max-width:520px;
@@ -389,9 +396,20 @@
   <section class="countdown reveal">
     <div class="cc-left">
       <div class="cc-label">The Premiere</div>
-      <video class="cc-title-video" autoplay muted loop playsinline preload="auto" id="ccVideo">
-        <source src="lights-up.mp4" type="video/mp4">
-      </video>
+      <div class="video-wrap">
+        <video class="cc-title-video" autoplay muted loop playsinline preload="auto" id="ccVideo">
+          <source src="lights-up.mp4" type="video/mp4">
+        </video>
+        <div class="vctrl">
+          <button class="vc-btn" id="vcRewind" type="button" title="Rewind 10s" aria-label="Rewind 10 seconds">&#x21BA;&nbsp;10s</button>
+          <button class="vc-btn vc-play" id="vcPlay" type="button" title="Play / Pause" aria-label="Play or pause">&#10074;&#10074;</button>
+          <button class="vc-btn" id="vcFwd" type="button" title="Forward 10s" aria-label="Forward 10 seconds">10s&nbsp;&#x21BB;</button>
+          <input class="vc-seek" id="vcSeek" type="range" min="0" max="100" value="0" step="0.1" aria-label="Seek through video">
+          <span class="vc-time" id="vcTime">0:00 / 0:00</span>
+          <button class="vc-btn" id="vcMute" type="button" title="Play audio (unmute)" aria-label="Toggle sound">&#128263;</button>
+          <a class="vc-btn vc-dl" id="vcDl" href="lights-up.mp4" download="lights-up.mp4" title="Download video" aria-label="Download video">&#11015;</a>
+        </div>
+      </div>
       <p class="cc-sub">Opening day: 7 & 8 January  2027</p>
     </div>
     <div class="cc-grid">
@@ -564,16 +582,68 @@
   tick(); setInterval(tick,1000);
 })();
 
-/* ---------- Force video autoplay (desktop + mobile) ---------- */
+/* ---------- Video controls: play/pause, audio, forward, download, seek ---------- */
 (function(){
   const v=document.getElementById("ccVideo");
   if(!v) return;
-  const tryPlay=()=>{ const p=v.play(); if(p&&p.catch)p.catch(()=>{}); };
+  const play =document.getElementById("vcPlay");
+  const mute =document.getElementById("vcMute");
+  const fwd  =document.getElementById("vcFwd");
+  const rew  =document.getElementById("vcRewind");
+  const seek =document.getElementById("vcSeek");
+  const time =document.getElementById("vcTime");
+  const dl   =document.getElementById("vcDl");
+
+  /* Autoplay still starts MUTED because every desktop/mobile browser blocks
+     autoplay-with-sound until the user interacts. The first click on the
+     unmute button unmutes and the audio plays in sync with the picture. */
   v.muted=true; v.playsInline=true;
+  const tryPlay=()=>{ const p=v.play(); if(p&&p.catch)p.catch(()=>{}); };
   tryPlay();
   v.addEventListener("canplay", tryPlay);
   v.addEventListener("loadeddata", tryPlay);
   document.addEventListener("visibilitychange",()=>{ if(!document.hidden) tryPlay(); });
+
+  const fmt=t=>{ if(isNaN(t)||t<0) t=0; const m=Math.floor(t/60), s=Math.floor(t%60);
+                 return m+":"+(s<10?"0"+s:s); };
+  const updPlay=()=>{ play.innerHTML=v.paused?"&#9654;":"&#10074;&#10074;";
+                      play.classList.toggle("is-paused", v.paused);
+                      play.title=v.paused?"Play":"Pause"; };
+  const updMute=()=>{ mute.innerHTML=v.muted?"&#128263;":"&#128266;";
+                      mute.title=v.muted?"Play audio (unmute)":"Mute"; };
+  const updMeta=()=>{ if(v.duration && isFinite(v.duration)){ seek.max=v.duration; } };
+
+  play.addEventListener("click",()=>{ if(v.paused){ v.play(); } else { v.pause(); } });
+  mute.addEventListener("click",()=>{
+    v.muted=!v.muted;
+    /* if the user just enabled audio on a paused clip, start it playing too */
+    if(!v.muted && v.paused){ v.play(); }
+    updMute();
+  });
+  fwd.addEventListener("click",()=>{ try{ v.currentTime=Math.min((v.duration||0), v.currentTime+10); }catch(e){} });
+  rew.addEventListener("click",()=>{ try{ v.currentTime=Math.max(0, v.currentTime-10); }catch(e){} });
+  seek.addEventListener("input",()=>{ try{ v.currentTime=parseFloat(seek.value); }catch(e){} });
+
+  v.addEventListener("play",          updPlay);
+  v.addEventListener("pause",         updPlay);
+  v.addEventListener("volumechange",  updMute);
+  v.addEventListener("loadedmetadata",updMeta);
+  v.addEventListener("durationchange",updMeta);
+  v.addEventListener("timeupdate",()=>{
+    seek.value=v.currentTime||0;
+    time.textContent=fmt(v.currentTime)+" / "+fmt(v.duration);
+  });
+
+  /* keyboard shortcuts while the video area is focused or hovered */
+  v.tabIndex=0;
+  v.addEventListener("keydown",e=>{
+    if(e.key===" "||e.key==="k"){ e.preventDefault(); play.click(); }
+    else if(e.key==="ArrowRight"){ e.preventDefault(); fwd.click(); }
+    else if(e.key==="ArrowLeft"){  e.preventDefault(); rew.click(); }
+    else if(e.key==="m"){ mute.click(); }
+  });
+
+  updPlay(); updMute(); updMeta();
 })();
 
 
